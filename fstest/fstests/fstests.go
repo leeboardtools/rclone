@@ -1407,6 +1407,63 @@ func Run(t *testing.T, opt *Opt) {
 
 		})
 
+		// TestPutUnknownSize ensures Fs.Put() and Object.Update() don't panic when
+		// src.Size() == -1
+		t.Run("FsPutUnknownSize", func(t *testing.T) {
+
+			testPutUnknownSize := func() {
+				unknownSizePutFile := fstest.Item{
+					ModTime: fstest.Time("2002-02-03T04:05:06.499999999Z"),
+					Path:    "unknown-size-put.txt",
+				}
+
+				defer func() {
+					assert.Nil(t, recover(), "Fs.Put() should not panic when src.Size() == -1")
+				}()
+
+				contents := fstest.RandomString(100)
+				buf := bytes.NewBufferString(contents)
+				uploadHash := hash.NewMultiHasher()
+				in := io.TeeReader(buf, uploadHash)
+
+				unknownSizePutFile.Size = -1
+				obji := object.NewStaticObjectInfo(unknownSizePutFile.Path, unknownSizePutFile.ModTime, unknownSizePutFile.Size, true, nil, nil)
+				_, err := remote.Put(in, obji)
+				if err != nil {
+					// It's okay as long as no panic
+				}
+			}
+			testPutUnknownSize()
+
+			testUpdateUnknownSize := func() {
+				unknownSizeUpdateFile := fstest.Item{
+					ModTime: fstest.Time("2002-02-03T04:05:06.499999999Z"),
+					Path:    "unknown-size-update.txt",
+				}
+
+				testPut(t, remote, &unknownSizeUpdateFile)
+
+				defer func() {
+					assert.Nil(t, recover(), "Object.Update() should not panic when src.Size() == -1")
+				}()
+
+				newContents := fstest.RandomString(200)
+				buf := bytes.NewBufferString(newContents)
+				hash := hash.NewMultiHasher()
+				in := io.TeeReader(buf, hash)
+
+				unknownSizeUpdateFile.Size = -1
+				obj := findObject(t, remote, unknownSizeUpdateFile.Path)
+				obji := object.NewStaticObjectInfo(unknownSizeUpdateFile.Path, unknownSizeUpdateFile.ModTime, int64(len(newContents)), true, nil, obj.Fs())
+				err := obj.Update(in, obji)
+				if err != nil {
+					// It's okay as long as no panic
+				}
+			}
+			testUpdateUnknownSize()
+
+		})
+
 		// Purge the folder
 		err = operations.Purge(remote, "")
 		require.NoError(t, err)
